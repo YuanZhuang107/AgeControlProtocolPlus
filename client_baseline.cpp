@@ -387,7 +387,7 @@ int main(int argc, char *argv[])
     
     //this_thread::sleep_for(chrono::nanoseconds((long long int)arrivalTime*1000000000));
 
-    cout << "Current arrival time" << "\t" << arrivalTime << endl;
+    w
     this_thread::sleep_for(chrono::nanoseconds(arrivalTime));
 
     unsigned char* packet = package((unsigned)seqNum);

@@ -6,6 +6,7 @@
 #include <errno.h>
 #include <string.h>
 #include <sys/types.h>
+#include <sys/sysinfo.h>
 #include <sys/socket.h>
 #include <netinet/in.h>
 #include <arpa/inet.h>
@@ -21,6 +22,8 @@
 #include <mutex>
 #include <chrono>
 #include <thread>
+#include <vector>
+#include <numeric>
 
 //#define SERVERPORT "49050"
 #define MAXBUFLEN 2048 //Ok?
@@ -29,6 +32,7 @@
 std::mutex mtx;
 
 using namespace std;
+using namespace std::chrono;
 
 //Variable Declarations
 const char * SERVERPORT = "49050";
@@ -507,7 +511,7 @@ void * Receiver(void * sock) {
     if (clock_gettime(CLOCK_REALTIME, & rx[receiver_seq]) == -1) {
       printf("error\n");
     }
-    printf("5: The receiver_seq is %u\n", receiver_seq);
+    // printf("5: The receiver_seq is %u\n", receiver_seq);
     systemTime[receiver_seq] = getDoubleTimeDiff( & tx[receiver_seq], & rx[receiver_seq]);
     received_delay[receiver_seq] = systemTime[receiver_seq];
 
@@ -677,22 +681,94 @@ int main(int argc, char * argv[]) {
   stepSize = stepSize_arg / 100;
   printf("Step Size %f", stepSize);
 
+// b'\x00\x00\x00!{"id":"","host":"","ip":"","port":"","system_info":null,"cpu":0.24968789014248818,"free_cores":4,"memory":6.807375267282626,"memory_free_in_MB":2761,"disk_info":null,"network_info":null,"gpu_info":null,"technology":null,"Overlay":false,"NetManagerPort":0,"timestamp":1694449879309,"message_seq":31}'
   int seqNum = 1;
+  size_t previous_idle_time=0, previous_total_time=0;
+  float prev_cpu=0;
+  auto prev_clock = std::chrono::high_resolution_clock::now();
   string input;
   // while (input != "quit") {
   //   getline(cin, input);
   while (1) {
-    input = "";
-    // cout << "Received payload: " << input << "\n";
+    // cout << "Received payload: " << input << "\n"
 
     mtx.lock();
     time_t arrivalTime = 1e9 / interRate;
     mtx.unlock();
     this_thread::sleep_for(chrono::nanoseconds(arrivalTime));
+    
+    // Record cpu usage.
+    auto cur_clock = std::chrono::high_resolution_clock::now();
+    double elapsed_time_ms = std::chrono::duration<double, std::milli>(cur_clock - prev_clock).count();
+    float cpu = prev_cpu;
+    // Only record CPU load delta every 1000ms.
+    if (elapsed_time_ms > 1000) {
+      std::ifstream proc_stat("/proc/stat");
+      proc_stat.ignore(5, ' '); // Skip the 'cpu' prefix.
+      std::vector<size_t> times;
+      for (size_t time; proc_stat >> time; times.push_back(time));
+      size_t idle_time = times[3];
+      if (times.size() >= 4) {
+        size_t total_time = std::accumulate(times.begin(), times.end(), 0);
+        const float idle_time_delta = idle_time - previous_idle_time;
+        const float total_time_delta = total_time - previous_total_time;
+        cpu = 100.0 * (1.0 - idle_time_delta / total_time_delta);
+        previous_idle_time = idle_time;
+        previous_total_time = total_time;
+        prev_cpu = cpu;
+      }
+      prev_clock = cur_clock;
+    }
 
+    std::string token;
+    std::ifstream file("/proc/meminfo");
+    unsigned long memTotal, memFree, memBuffer, memCached, memSReclaimable, memUsed;
+    float memUsedPercent;
+
+    while(file >> token) {
+        if(token == "MemTotal:") {
+            file >> memTotal;
+        }
+        if(token == "MemFree:") {
+            file >> memFree;
+        }
+        if(token == "Buffers:") {
+            file >> memBuffer;
+        }
+        if(token == "Cached:") {
+            file >> memCached;
+        }
+        if(token == "SReclaimable:") {
+            file >> memSReclaimable;
+            file.ignore(std::numeric_limits<std::streamsize>::max(), '\n');
+        }
+    }
+
+    memUsed = memTotal-memFree-memBuffer-memCached-memSReclaimable;
+    memUsedPercent=100.0*memUsed/memTotal;
+
+    // // Record virtual memory load.
+    // struct sysinfo memInfo;
+    // sysinfo (&memInfo);
+    // long long totalVirtualMem = memInfo.totalram;
+    // //Add other values in next statement to avoid int overflow on right hand side...
+    // // totalVirtualMem += memInfo.totalswap;
+    // // totalVirtualMem *= memInfo.mem_unit;
+    // long long virtualMemUsed = memInfo.totalram - memInfo.freeram - memInfo.bufferram;
+    // //Add other values in next statement to avoid int overflow on right hand side...
+    // // virtualMemUsed += memInfo.totalswap - memInfo.freeswap;
+    // // virtualMemUsed *= memInfo.mem_unit;
+    // float mem = 100.0 * virtualMemUsed / totalVirtualMem;
+    // std::cout << "CPU load: " << cpu << "%           Memory Load: " << mem << "%" << " total: " << totalVirtualMem << " buffer: " << memInfo.totalswap << " freeram: " << memInfo.freeram << " used: " << virtualMemUsed << std::endl;
+
+    milliseconds ms = duration_cast< milliseconds >(
+      system_clock::now().time_since_epoch()
+    );
+    // cout << "Current arrival time slept" << "\t" << arrivalTime << endl;
+    input = "{\"id\":\"\",\"host\":\"\",\"ip\":\"\",\"port\":\"\",\"system_info\":null,\"cpu\":" + std::to_string(cpu) + ",\"free_cores\":4,\"memory\":" + std::to_string(memUsedPercent) + ",\"memory_free_in_MB\":2761,\"age_estimate\":" + std::to_string(recent_age_estimate) + ",\"backlog\":" + std::to_string(currentAverageBacklog) + ",\"disk_info\":null,\"network_info\":null,\"gpu_info\":null,\"technology\":null,\"Overlay\":false,\"NetManagerPort\":0,\"timestamp\":" + std::to_string(ms.count()) + ",\"message_seq\":" + std::to_string(seqNum) + "}";
     unsigned char * packet = package((unsigned) seqNum, input);
     int packet_size = input.length() + 4;
-    cout << "2: sending a packet seq:" << (unsigned) seqNum << " of length " << packet_size << "\n";
+    // cout << "2: sending a packet seq:" << (unsigned) seqNum << " of length " << packet_size << "\n";
 
     if (clock_gettime(CLOCK_REALTIME, & tx[seqNum]) == -1) {
       printf("error\n");
