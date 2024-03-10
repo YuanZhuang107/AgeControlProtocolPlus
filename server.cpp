@@ -140,49 +140,49 @@ int main(void) {
     printf("error\n");
   }
 
-  // do {
-  //   memset(buf, 0, sizeof(buf)); //might not be needed
+  do {
+    memset(buf, 0, sizeof(buf)); //might not be needed
 
-  //   addr_len = sizeof their_addr;
-  //   if ((numbytes = recvfrom(sockfd, buf, MAXBUFLEN - 1, 0,
-  //       (struct sockaddr * ) & their_addr, & addr_len)) == -1) {
-  //     perror("recvfrom");
-  //     exit(1);
-  //   }
+    addr_len = sizeof their_addr;
+    if ((numbytes = recvfrom(sockfd, buf, MAXBUFLEN - 1, 0,
+        (struct sockaddr * ) & their_addr, & addr_len)) == -1) {
+      perror("recvfrom");
+      exit(1);
+    }
 
-  //   seq = unpack(buf); //get the sequence number as int from packet
-  //   string payload((const char*) &buf[4]);
-  //   cout << payload << "\n";
+    seq = unpack(buf); //get the sequence number as int from packet
+    string payload((const char*) &buf[4]);
+    cout << payload << "\n";
 
-  //   if (clock_gettime(CLOCK_REALTIME, & currentTime) == -1) {
-  //     printf("error\n");
-  //   }
-  //   // TODO: consider removing these two lines
-  //   getDoubleTimeDiff( & startTime, & currentTime);
-  //   getDoubleTime(currentTime);
+    if (clock_gettime(CLOCK_REALTIME, & currentTime) == -1) {
+      printf("error\n");
+    }
+    // TODO: consider removing these two lines
+    getDoubleTimeDiff( & startTime, & currentTime);
+    getDoubleTime(currentTime);
 
-  //   //outputs reciving a packet
-  //   /*printf("listener: got packet from %s\n",
-  //     inet_ntop(their_addr.ss_family,
-  //       get_in_addr((struct sockaddr *)&their_addr),
-  //       s, sizeof s));
-  //   printf("listener: packet is %d bytes long\n", numbytes);
-  //   buf[numbytes] = '\0';
-  //   printf("listener: packet contains \"%s\"\n", buf);*/
-  //   // printf("listener: Recieved packet containing %d bytes\n", numbytes);
+    //outputs reciving a packet
+    /*printf("listener: got packet from %s\n",
+      inet_ntop(their_addr.ss_family,
+        get_in_addr((struct sockaddr *)&their_addr),
+        s, sizeof s));
+    printf("listener: packet is %d bytes long\n", numbytes);
+    buf[numbytes] = '\0';
+    printf("listener: packet contains \"%s\"\n", buf);*/
+    // printf("listener: Recieved packet containing %d bytes\n", numbytes);
 
-  //   //Let's ACK that we recieved the packet, on same socket
-  //   unsigned char * packet = package(seq);
-  //   if ((numbytes = sendto(sockfd, packet, 20, 0, (struct sockaddr * ) & their_addr, addr_len)) == -1) {
-  //     perror("talker: sendto");
-  //     exit(1);
-  //   }
-  //   free(packet);
+    //Let's ACK that we recieved the packet, on same socket
+    unsigned char * packet = package(seq);
+    if ((numbytes = sendto(sockfd, packet, 20, 0, (struct sockaddr * ) & their_addr, addr_len)) == -1) {
+      perror("talker: sendto");
+      exit(1);
+    }
+    free(packet);
 
-  //   //if(getDoubleTimeDiff(&startTime,&currentTime)>=500.0)
-  //   //break;
+    //if(getDoubleTimeDiff(&startTime,&currentTime)>=500.0)
+    //break;
 
-  // } while (true);
+  } while (true);
 
   close(sockfd);
   return 0;

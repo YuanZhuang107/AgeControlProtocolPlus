@@ -114,6 +114,24 @@ double globalBacklog_local[local_size] = {
   0
 };
 
+////snapshot data to report for analysing aoi
+
+//data for making decision
+static double recent_age_estimate_ss = 0;
+static double prev_age_estimate_ss = 0;//not using
+static double diff_age_estimate_ss = 0;
+static double changeinBacklog_ss = 0;
+static int current_action_ss = 0;
+
+//data for actual value
+static time_t RTT_local_ss = 0.0;
+static double currentAverageBacklog_ss = 0;
+static time_t depTime_local_ss = 0; 
+static double desiredChangeinLambda_ss = 0;
+static double calcLambda_ss = 0;
+
+
+
 //Log files opening these files in overwite(out) append state is app
 ofstream fileOOOLog("Log/Out_of_Order_log.txt", ios::out);
 ofstream fileTxLog("Log/Tx_log.txt", ios::out);
@@ -203,6 +221,10 @@ static void getBacklogArrival(time_t sampleTime) {
 
   int backlog;
   backlog = transmission_seq - receiver_seq;
+  if(backlog < 0) {
+    printf("######trans_seq %d \n", transmission_seq);
+    printf("######receiver_seq %d \n", receiver_seq);
+  }
 
   mtx.lock(); //we take mutex before handling global arrays
   globalBacklog[backlogIndex] = backlog;
@@ -226,12 +248,20 @@ static void getAverageBacklog(time_t backlogTime_local[], double globalBacklog_l
     //calculate area code
     for (int i = 0; i < backlogIndex_local; i++) {
       sumBacklog = sumBacklog + globalBacklog_local[i] * (backlogTime_local[i + 1] - backlogTime_local[i]) * 1e-9;
+      // if (sumBacklog < 0) {
+      //   printf("######globalBacklog_local: %f \n", globalBacklog_local[i]);
+      //   printf("######backlogTime_local: %lu \n", backlogTime_local[i+1] - backlogTime_local[i]);
+      // }
     }
     sumTime = backlogTime_local[backlogIndex_local] - backlogTime_local[0];
     currentAverageBacklog = sumBacklog / (1e-9 * sumTime);
   } else {
     currentAverageBacklog = globalBacklog_local[backlogIndex_local - 1];
   }
+  //  if (currentAverageBacklog < 0) {
+  //   printf("######SumBacklog: %f \n", sumBacklog);
+  //   printf("######sumTime: %lu \n", sumTime);
+  //  }
 
   // fileAvgbacklog << getDoubleTimeNow() << "\t" << sumBacklog << "\t" << currentAverageBacklog << "\t" << sumTime << "\t" << currentBacklogTime << "\t" << backlogIndex_local << "\t" << std::endl;
   if (backlogIndex_local == 1) {
@@ -299,6 +329,8 @@ static void * controlAction(void * x1) {
   time_t depTime_local = depTime;
   time_t prevReceiveTime_local = prevReceiveTime;
 
+  RTT_local_ss = RTT;
+
   int controlIndex_local = controlIndex;
   int backlogIndex_local = backlogIndex;
 
@@ -353,8 +385,16 @@ static void * controlAction(void * x1) {
   getAgeEstimate(controlPacketDelay_local, controlDepartureTime_local, controlIndex_local, currentControlTime, prevReceiveTime_local, lastDelay);
   //printf("GetBacklog: ControlAction Block\n");
   getAverageBacklog(backlogTime_local, globalBacklog_local, backlogIndex_local, currentBacklogTime);
+  
 
   double changeinBacklog = currentAverageBacklog - prevAverageBacklog;
+  changeinBacklog_ss = changeinBacklog;
+  currentAverageBacklog_ss = currentAverageBacklog;
+  
+  recent_age_estimate_ss = recent_age_estimate;
+  prev_age_estimate_ss = prev_age_estimate;
+  depTime_local_ss = depTime_local;
+  diff_age_estimate_ss = recent_age_estimate - prev_age_estimate;
 
   //printf("Do If/Else: ControlAction Block\n"); 
   if ((recent_age_estimate - prev_age_estimate >= 0) && (changeinBacklog > 0)) {
@@ -409,6 +449,10 @@ static void * controlAction(void * x1) {
       n = 0;
       desiredChangeinBacklog = -1;
     }
+
+    current_action_ss = current_action;
+    desiredChangeinLambda_ss = desiredChangeinLambda;
+    calcLambda_ss = calcLambda;
 
   }
 
@@ -765,7 +809,7 @@ int main(int argc, char * argv[]) {
       system_clock::now().time_since_epoch()
     );
     // cout << "Current arrival time slept" << "\t" << arrivalTime << endl;
-    input = "{\"id\":\"\",\"host\":\"\",\"ip\":\"\",\"port\":\"\",\"system_info\":null,\"cpu\":" + std::to_string(cpu) + ",\"free_cores\":4,\"memory\":" + std::to_string(memUsedPercent) + ",\"memory_free_in_MB\":2761,\"age_estimate\":" + std::to_string(recent_age_estimate) + ",\"backlog\":" + std::to_string(currentAverageBacklog) + ",\"disk_info\":null,\"network_info\":null,\"gpu_info\":null,\"technology\":null,\"Overlay\":false,\"NetManagerPort\":0,\"timestamp\":" + std::to_string(ms.count()) + ",\"message_seq\":" + std::to_string(seqNum) + "}";
+    input = "{\"id\":\"\",\"host\":\"\",\"ip\":\"\",\"port\":\"\",\"system_info\":null,\"cpu\":" + std::to_string(cpu) + ",\"free_cores\":4,\"memory\":" + std::to_string(memUsedPercent) + ",\"memory_free_in_MB\":2761,\"recent_age_estimate\":" + std::to_string(recent_age_estimate_ss) + ",\"diff_age_estimate\":" + std::to_string(diff_age_estimate_ss) + ",\"currentAverageBacklog\":" + std::to_string(currentAverageBacklog_ss) + ",\"changeinBacklog\":" + std::to_string(changeinBacklog_ss) + ",\"current_action\":" + std::to_string(current_action_ss) +",\"RTT_local\":" + std::to_string(RTT_local_ss) + ",\"depTime_local\":" + std::to_string(depTime_local_ss) + ",\"desiredChangeinLambda\":" + std::to_string(desiredChangeinLambda_ss) + ",\"calcLambda\":" + std::to_string(calcLambda) + ",\"disk_info\":null,\"network_info\":null,\"gpu_info\":null,\"technology\":null,\"Overlay\":false,\"NetManagerPort\":0,\"timestamp\":" + std::to_string(ms.count()) + ",\"message_seq\":" + std::to_string(seqNum) + "}";
     unsigned char * packet = package((unsigned) seqNum, input);
     int packet_size = input.length() + 4;
     // cout << "2: sending a packet seq:" << (unsigned) seqNum << " of length " << packet_size << "\n";
